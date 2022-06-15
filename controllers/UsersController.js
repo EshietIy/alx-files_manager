@@ -1,59 +1,40 @@
-/* eslint-disable */
-import { ObjectId } from 'mongodb';
+/* eslint-disable import/no-named-as-default */
+import sha1 from 'sha1';
+import Queue from 'bull/lib/queue';
 import dbClient from '../utils/db';
-import redisClient from '../utils/redis';
 
-const sha1 = require('sha1');
+const userQueue = new Queue('email sending');
 
-// POST /users should create a new user in DB
-export async function postNew(req, res) {
+export default class UsersController {
+  static async postNew(req, res) {
+    const email = req.body ? req.body.email : null;
+    const password = req.body ? req.body.password : null;
 
-  try {
-    const userEmail = req.body.email;
-    if (!userEmail) {
-      return res.status(400).send({
-        error: 'Missing email',
-      });
+    if (!email) {
+      res.status(400).json({ error: 'Missing email' });
+      return;
     }
-
-    const userPassword = req.body.password;
-    if (!userPassword) {
-      return res.status(400).send({
-        error: 'Missing password',
-      });
+    if (!password) {
+      res.status(400).json({ error: 'Missing password' });
+      return;
     }
-    
-    let existingEmail = await dbClient.db.collection('users').findOne({ email: userEmail });
-    if (existingEmail) {
-      return res.status(400).send({
-        error: 'Already exist',
-      });
+    const user = await (await dbClient.usersCollection()).findOne({ email });
+
+    if (user) {
+      res.status(400).json({ error: 'Already exist' });
+      return;
     }
+    const insertionInfo = await (await dbClient.usersCollection())
+      .insertOne({ email, password: sha1(password) });
+    const userId = insertionInfo.insertedId.toString();
 
-    let userId;
-    const hashedPw = sha1(userPassword);
-    const newUser = {
-      email: userEmail,
-      password: hashedPw,
-    };
+    userQueue.add({ userId });
+    res.status(201).json({ email, id: userId });
+  }
 
-    try {
-      await dbClient.db.collection('users').insertOne(newUser, (err) => {
-        userId = newUser._id;
-        return res.status(201).send({
-          email: userEmail,
-          id: userId,
-        });
-      });
-    } catch (err) {
-      return res.status(err.status).send({
-        'error': err,
-      });
-    }
+  static async getMe(req, res) {
+    const { user } = req;
 
-  } catch (error) {
-    return res.status(500).send({
-      error: 'Server error',
-    });
+    res.status(200).json({ email: user.email, id: user._id.toString() });
   }
 }

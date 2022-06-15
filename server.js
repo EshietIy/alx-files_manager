@@ -1,13 +1,12 @@
 import express from 'express';
-import Routes from './routes/index';
+import startServer from './libs/startserver';
+import addRoutes from './routes';
+import addMiddlewares from './libs/middlewares';
 
-const app = express();
-const port = process.env.PORT || 5000;
+const server = express();
 
-app.use(express.json());
-Routes(app);
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-});
+addMiddlewares(server);
+addRoutes(server);
+startServer(server);
 
-export default app;
+export default server;
